@@ -67,7 +67,7 @@ const setupOutDir = async (outDir: string) => {
       .option(
         "-g, --gpuLayers <gpuLayers>",
         "number of gpu layers to use with llama2",
-        "0",
+        "1",
       )
       .action(
         async (options: {
@@ -85,7 +85,27 @@ const setupOutDir = async (outDir: string) => {
             modelPath,
             gpuLayers: parseInt(gpuLayers),
           });
-          const context = new LlamaContext({ model });
+          const context = new LlamaContext({
+            model,
+            contextSize: 4096,
+            //batchSize: 528,
+          });
+          const session = new LlamaChatSession({
+            contextSequence: context.getSequence(),
+            systemPrompt: `
+            Create a JSON document with the following fields and values for a \
+            North American Sega Genesis game rom file.
+          
+            name: string, the displayed name for the game
+            desc: string, a description of the game including any media description released, characters, plot points, goals, etc
+            rating: float, the rating for the game, expressed as a floating point number between 0 and 1. Arbitrary values are fine (ES can display half-stars, quarter-stars, etc).
+            releasedate: datetime, the date the game was released. Displayed as date only, time is ignored.
+            developer: string, the development studio that created the game.
+            publisher: string, the company that published the game.
+            genre: string, the (primary) genre for the game.
+            players: integer, the number of players the game supports.
+          `,
+          });
           console.log(`loaded model from ${modelPath}.`);
 
           const results: {
@@ -104,30 +124,22 @@ const setupOutDir = async (outDir: string) => {
           } = { gameList: [] };
 
           console.log(`reading rom files from ${inputDir}`);
-          const files = await fs.readdir(inputDir);
+          const files = (await fs.readdir(inputDir)).filter((f) =>
+            f.endsWith(".zip"),
+          );
           console.log(`read ${files.length} rom files from ${inputDir}`);
 
           for (const file of files) {
-            const session = new LlamaChatSession({ context });
-            console.log(`starting ${file}`);
             try {
-              const input = `
-    Create a JSON document with the following fields and values for a North American Sega Genesis game rom file "${file}".
-    
-    name: string, the displayed name for the game
-    desc: string, a description of the game. Longer descriptions will automatically scroll, so don't worry about size.
-    rating: float, the rating for the game, expressed as a floating point number between 0 and 1. Arbitrary values are fine (ES can display half-stars, quarter-stars, etc).
-    releasedate: datetime, the date the game was released. Displayed as date only, time is ignored.
-    developer: string, the developer for the game
-    publisher: string, the publisher for the game.
-    genre: string, the (primary) genre for the game.
-    players: integer, the number of players the game supports.
-    `;
-              const response: string = await session.prompt(input, {
-                // @ts-ignore
-                grammar: gameResponseSchema,
-                maxTokens: context.getContextSize(),
-              });
+              console.log(`starting ${file}`);
+
+              const response = await session.prompt(
+                `rom file "${file}"`,
+                {
+                  // @ts-ignore
+                  grammar: gameResponseSchema,
+                },
+              );
               results.gameList.push({ game: JSON.parse(response) });
             } catch (err: any) {
               console.error(`error: ${err.message} ${err.stack}`);
