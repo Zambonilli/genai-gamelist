@@ -1,4 +1,6 @@
-import * as fs from "fs/promises";
+import * as fsPromises from "fs/promises";
+import fs from "fs";
+import { pipeline } from "node:stream/promises";
 import path from "path";
 import { program } from "commander";
 import xml2js from "xml2js";
@@ -8,6 +10,9 @@ import {
   LlamaChatSession,
   LlamaJsonSchemaGrammar,
 } from "node-llama-cpp";
+// @ts-ignore
+import { DiffusionPipeline } from "@aislamov/diffusers.js";
+import { PNG } from "pngjs";
 
 // TODO figure out why LlamaJsonSchemaGrammar ctor is defined w/an arg
 // @ts-ignore
@@ -43,18 +48,20 @@ const gameResponseSchema = new LlamaJsonSchemaGrammar({
 
 const setupOutDir = async (outDir: string) => {
   try {
-    const statResults = await fs.stat(outDir);
+    const statResults = await fsPromises.stat(outDir);
 
     if (statResults.isDirectory()) {
       console.log(`deleting existing output at ${outDir}.`);
-      await fs.rm(outDir, { recursive: true });
+      await fsPromises.rm(outDir, { recursive: true });
       console.log(`deleted existing output at ${outDir}.`);
     }
   } catch {
     // does not exist
   }
 
-  await fs.mkdir(outDir);
+  await fsPromises.mkdir(outDir);
+  await fsPromises.mkdir(path.join(outDir, "media"));
+  await fsPromises.mkdir(path.join(outDir, "media", "images"));
   console.log(`created outDir ${outDir}.`);
 };
 
@@ -113,6 +120,8 @@ const setupOutDir = async (outDir: string) => {
               game: {
                 name: string;
                 desc: string;
+                image?: string;
+                thumbnail?: string;
                 rating: number;
                 releasedate: string;
                 developer: string;
@@ -124,7 +133,7 @@ const setupOutDir = async (outDir: string) => {
           } = { gameList: [] };
 
           console.log(`reading rom files from ${inputDir}`);
-          const files = (await fs.readdir(inputDir)).filter((f) =>
+          const files = (await fsPromises.readdir(inputDir)).filter((f) =>
             f.endsWith(".zip"),
           );
           console.log(`read ${files.length} rom files from ${inputDir}`);
@@ -133,13 +142,10 @@ const setupOutDir = async (outDir: string) => {
             try {
               console.log(`starting ${file}`);
 
-              const response = await session.prompt(
-                `rom file "${file}"`,
-                {
-                  // @ts-ignore
-                  grammar: gameResponseSchema,
-                },
-              );
+              const response = await session.prompt(`rom file "${file}"`, {
+                // @ts-ignore
+                grammar: gameResponseSchema,
+              });
               results.gameList.push({ game: JSON.parse(response) });
             } catch (err: any) {
               console.error(`error: ${err.message} ${err.stack}`);
@@ -148,15 +154,63 @@ const setupOutDir = async (outDir: string) => {
             }
           }
 
+          // explicitly free up the model so we get cpu/gpu memory reclaimed
+          // TODO watch for destructor support
+          model.dispose();
+
+          console.log("starting image generation");
+
+          const pipe = await DiffusionPipeline.fromPretrained(
+            "aislamov/stable-diffusion-2-1-base-onnx",
+            {
+              revision: "cpu",
+            },
+          );
+          for (const game of results.gameList) {
+            const images = await pipe.run({
+              prompt: `An image for the Sega Genesis game ${game.game.name} about ${game.game.desc}`,
+              negativePrompt: "",
+              numInferenceSteps: 30,
+              sdV1: false,
+              height: 768,
+              width: 768,
+              guidanceScale: 7.5,
+              img2imgFlag: false,
+              progressCallback: (progress: any) => {
+                console.log(`${progress.statusText}`);
+              },
+            });
+
+            const data = await images[0]
+              .mul(255)
+              .round()
+              .clipByValue(0, 255)
+              .transpose(0, 2, 3, 1);
+            const p = new PNG({ width: 512, height: 512, inputColorType: 2 });
+            p.data = Buffer.from(data.data);
+
+            const imgPath = path.join(
+              outDir,
+              "media",
+              "images",
+              `${game.game.name.toLowerCase()}.png`,
+            );
+            await pipeline(p.pack(), fs.createWriteStream(imgPath));
+            console.log(`image saved for ${game.game.name} to ${imgPath}`);
+
+            game.game.image = `./media/images/${game.game.name}.png`;
+          }
+
           // write file
+          const outputFilePath = path.join(outDir, "gamelist.xml");
           const builder = new xml2js.Builder();
-          await fs.writeFile(
+          await fsPromises.writeFile(
             path.join(outDir, "gamelist.xml"),
             builder.buildObject(results),
             "utf-8",
           );
 
-          console.log(`wrote file`);
+          console.log(`wrote ${outputFilePath} file`);
         },
       );
 
