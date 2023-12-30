@@ -1,0 +1,37 @@
+{
+  "name": "genai-gamelist",
+  "version": "1.0.0",
+  "description": "genai-gamelist is a Command Line tool for creating retropie gamelist.xml files.",
+  "main": "index.js",
+  "scripts": {
+    "format": "prettier ./src/ --write",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zambonilli/genai-gamelist.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Zambonilli/genai-gamelist/issues"
+  },
+  "homepage": "https://github.com/Zambonilli/genai-gamelist#readme",
+  "dependencies": {
+    "@aislamov/diffusers.js": "^0.9.3",
+    "commander": "^11.1.0",
+    "node-llama-cpp": "^3.0.0-beta.1",
+    "pngjs": "^7.0.0",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@tsconfig/node18": "^18.2.2",
+    "@types/pngjs": "^6.0.4",
+    "@types/xml2js": "^0.4.14",
+    "prettier": "3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "type": "module"
+}
