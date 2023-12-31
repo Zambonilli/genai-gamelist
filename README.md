@@ -1,5 +1,5 @@
 # genai-gamelist
-genai-gamelist is a Command Line tool for creating retropie gamelist.xml files.
+genai-gamelist is a Command Line tool for creating retropie gamelist.xml and game resources using llama2 and stable diffusion.
 
 ## Local Development
 
