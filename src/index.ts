@@ -118,6 +118,7 @@ const setupOutDir = async (outDir: string) => {
           const results: {
             gameList: {
               game: {
+                path?: string;
                 name: string;
                 desc: string;
                 image?: string;
@@ -146,7 +147,9 @@ const setupOutDir = async (outDir: string) => {
                 // @ts-ignore
                 grammar: gameResponseSchema,
               });
-              results.gameList.push({ game: JSON.parse(response) });
+              const game = JSON.parse(response);
+              game.path = `/home/pi/ROMs/genesis/${file}`;
+              results.gameList.push({ game });
             } catch (err: any) {
               console.error(`error: ${err.message} ${err.stack}`);
             } finally {
@@ -168,7 +171,7 @@ const setupOutDir = async (outDir: string) => {
           );
           for (const game of results.gameList) {
             const images = await pipe.run({
-              prompt: `An image for the Sega Genesis game ${game.game.name} about ${game.game.desc}`,
+              prompt: `An box cover art image for the Sega Genesis game ${game.game.name} about ${game.game.desc}`,
               negativePrompt: "",
               numInferenceSteps: 30,
               sdV1: false,
